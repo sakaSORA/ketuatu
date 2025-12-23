@@ -24,7 +24,6 @@
         .header { text-align: center; color: white; margin-bottom: 10px; }
         .header h1 { font-size: 1.4rem; }
 
-        /* 入力カード */
         .input-card {
             background: white; border-radius: 16px; padding: 15px;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2); margin-bottom: 15px;
@@ -34,7 +33,6 @@
             border-radius: 10px; font-size: 1.1rem; text-align: center; margin-bottom: 12px; font-weight: bold;
         }
 
-        /* ☀️ 朝エリア・🌙 夜エリアの色付け */
         .area-morning {
             background-color: #fffaf0; border-radius: 12px; padding: 12px; margin-bottom: 12px;
             border: 1px solid #ffeeba;
@@ -48,14 +46,12 @@
         .morning-text { color: #d68910; }
         .evening-text { color: #2e86de; }
 
-        /* 入力パーツ */
         .stepper-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; }
         .reading-num { font-size: 0.9rem; font-weight: bold; background: #eee; padding: 4px 8px; border-radius: 6px; }
         .value-control { display: flex; align-items: center; gap: 4px; }
         .step-btn { width: 36px; height: 36px; border: 1px solid #ccc; background: white; border-radius: 6px; font-weight: bold; font-size: 1.2rem; cursor: pointer; }
         .value-control select { width: 70px; height: 38px; border: 1px solid #ccc; border-radius: 6px; font-size: 1.2rem; font-weight: bold; text-align: center; }
 
-        /* ボタン */
         .save-button {
             width: 100%; padding: 15px; background: linear-gradient(135deg, #667eea, #764ba2);
             color: white; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; cursor: pointer;
@@ -66,7 +62,6 @@
         .btn-export { background: #f39c12; }
         .btn-import { background: #7f8c8d; }
 
-        /* 履歴 */
         .history-section { background: white; border-radius: 16px; padding: 15px; min-height: 150px; }
         .history-item { border-bottom: 1px solid #eee; }
         .history-summary { display: grid; grid-template-columns: 60px 1fr 1fr 40px; align-items: center; padding: 12px 0; cursor: pointer; }
@@ -79,7 +74,6 @@
         }
         .history-item.open .history-details { max-height: 60px; padding: 8px 0; border-top: 1px dashed #ccc; }
 
-        /* --- 印刷ダイアログ --- */
         .print-dialog-overlay {
             display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0, 0, 0, 0.7); z-index: 1000; align-items: center; justify-content: center; padding: 20px;
@@ -93,20 +87,22 @@
         .dialog-btn.primary { background: #667eea; color: white; }
         .dialog-btn.secondary { background: #eee; }
 
-        /* --- 印刷用コンテナ・スタイル --- */
+        /* --- 印刷用設定 --- */
         #printContainer { display: none; }
         @media print {
-            body * { visibility: hidden; }
-            #printContainer, #printContainer * { visibility: visible; }
-            #printContainer { display: block !important; position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; }
-            .print-page { page-break-after: always; display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; padding: 10mm; }
+            body > .container { display: none !important; }
+            #printContainer { display: block !important; position: absolute; left: 0; top: 0; width: 100%; background: white; }
+            @page { size: A4; margin: 10mm; }
+            .print-page { page-break-after: always; display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; padding: 5mm; }
             .print-header { grid-column: 1 / -1; text-align: center; border-bottom: 2px solid #000; margin-bottom: 5mm; padding-bottom: 2mm; }
             .week-group { border: 1px solid #333; padding: 2mm; display: flex; flex-direction: column; page-break-inside: avoid; }
-            .weekly-summary { background: #eee; padding: 1mm; text-align: center; font-weight: bold; font-size: 9pt; margin-bottom: 2mm; }
-            .day-row { display: grid; grid-template-columns: 15mm 1fr; border-bottom: 1px solid #ccc; padding: 1mm 0; min-height: 12mm; align-items: center; font-size: 8pt; }
+            .weekly-summary { background: #f0f0f0; padding: 2mm; text-align: center; font-weight: bold; font-size: 9pt; margin-bottom: 2mm; border-bottom: 1px solid #ccc; line-height: 1.4; }
+            .avg-badge { display: inline-block; padding: 1px 4px; border-radius: 3px; font-size: 8pt; }
+            .day-row { display: grid; grid-template-columns: 15mm 1fr; border-bottom: 1px solid #ccc; padding: 1mm 0; min-height: 14mm; align-items: center; font-size: 8pt; }
             .day-date { font-weight: bold; text-align: center; }
-            .day-values { display: grid; grid-template-columns: 1fr 1fr; text-align: center; }
+            .day-values { display: grid; grid-template-columns: 1fr 1fr; text-align: center; line-height: 1.2; }
             .val-m { color: #d68910; } .val-e { color: #2e86de; }
+            small { font-size: 7pt; color: #666; font-style: italic; }
         }
     </style>
 </head>
@@ -213,10 +209,8 @@
 <div id="printContainer"></div>
 
 <script>
-    // --- 1. データ管理 ---
     let records = JSON.parse(localStorage.getItem('bp_records_integrated')) || [];
 
-    // --- 2. 初期化 ---
     function createOptions(id, min, max, def) {
         const sel = document.getElementById(id);
         for(let i=max; i>=min; i--) {
@@ -231,14 +225,9 @@
         createOptions(p+'_dia', 40, 140, 80);
     });
 
-    // 日本時間での日付セット
     const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    document.getElementById('record_date').value = `${yyyy}-${mm}-${dd}`;
+    document.getElementById('record_date').value = today.toISOString().split('T')[0];
 
-    // --- 3. UI操作 ---
     function step(id, val) {
         const el = document.getElementById(id);
         const nextVal = parseInt(el.value) + val;
@@ -255,7 +244,6 @@
             e1: [parseInt(document.getElementById('e1_sys').value), parseInt(document.getElementById('e1_dia').value)],
             e2: [parseInt(document.getElementById('e2_sys').value), parseInt(document.getElementById('e2_dia').value)]
         };
-        // 同日付は上書き
         records = records.filter(r => r.fullDate !== dateVal);
         records.unshift(entry);
         records.sort((a,b) => new Date(b.fullDate) - new Date(a.fullDate));
@@ -275,11 +263,11 @@
             return;
         }
         list.innerHTML = records.map(r => {
-            const d = new Date(r.fullDate);
+            const dParts = r.fullDate.split('-');
             return `
                 <div class="history-item" onclick="this.classList.toggle('open')">
                     <div class="history-summary">
-                        <div class="history-date">${d.getMonth()+1}/${d.getDate()}</div>
+                        <div class="history-date">${parseInt(dParts[1])}/${parseInt(dParts[2])}</div>
                         <div class="sum-val morning-text">${r.m1[0]}/${r.m1[1]}</div>
                         <div class="sum-val evening-text">${r.e1[0]}/${r.e1[1]}</div>
                         <button class="delete-btn" onclick="event.stopPropagation(); deleteRecord(${r.id})">×</button>
@@ -287,8 +275,7 @@
                     <div class="history-details">
                         <p>朝②: ${r.m2[0]}/${r.m2[1]} | 夜②: ${r.e2[0]}/${r.e2[1]}</p>
                     </div>
-                </div>
-            `;
+                </div>`;
         }).join('');
     }
 
@@ -299,7 +286,6 @@
         }
     }
 
-    // --- 4. CSV入出力 ---
     function exportToCSV() {
         let csv = "日付,朝1高,朝1低,朝2高,朝2低,夜1高,夜1低,夜2高,夜2低\n";
         records.forEach(r => {
@@ -317,33 +303,33 @@
         if (!file) return;
         const reader = new FileReader();
         reader.onload = function(e) {
-            const lines = e.target.result.split('\n');
+            const lines = e.target.result.split(/\r\n|\n/);
+            let count = 0;
             for (let i = 1; i < lines.length; i++) {
                 const cols = lines[i].split(',');
                 if (cols.length < 9) continue;
+                const num = (v) => { const n = parseInt(v); return isNaN(n) ? 0 : n; };
                 const entry = {
                     id: Date.now() + i,
                     fullDate: cols[0].trim(),
-                    m1: [parseInt(cols[1]), parseInt(cols[2])],
-                    m2: [parseInt(cols[3]), parseInt(cols[4])],
-                    e1: [parseInt(cols[5]), parseInt(cols[6])],
-                    e2: [parseInt(cols[7]), parseInt(cols[8])]
+                    m1: [num(cols[1]), num(cols[2])], m2: [num(cols[3]), num(cols[4])],
+                    e1: [num(cols[5]), num(cols[6])], e2: [num(cols[7]), num(cols[8])]
                 };
                 records = records.filter(r => r.fullDate !== entry.fullDate);
                 records.push(entry);
+                count++;
             }
             records.sort((a,b) => new Date(b.fullDate) - new Date(a.fullDate));
             saveAndRender();
-            alert('取り込みが完了しました');
+            alert(`${count}件のデータを取り込みました`);
         };
         reader.readAsText(file);
     }
 
-    // --- 5. 印刷ロジック ---
     function showPrintDialog() {
         document.getElementById('printDialog').style.display = 'flex';
         if (records.length > 0) {
-            const dates = records.map(r => new Date(r.fullDate));
+            const dates = records.map(r => new Date(r.fullDate + "T00:00:00").getTime());
             document.getElementById('printStartDate').value = new Date(Math.min(...dates)).toISOString().split('T')[0];
             document.getElementById('printEndDate').value = new Date(Math.max(...dates)).toISOString().split('T')[0];
         }
@@ -351,16 +337,18 @@
     function closePrintDialog() { document.getElementById('printDialog').style.display = 'none'; }
 
     function executePrint() {
-        const start = new Date(document.getElementById('printStartDate').value);
-        const end = new Date(document.getElementById('printEndDate').value);
-        if (isNaN(start) || isNaN(end)) return alert('日付を正しく指定してください');
+        const startVal = document.getElementById('printStartDate').value;
+        const endVal = document.getElementById('printEndDate').value;
+        if (!startVal || !endVal) return alert('日付を正しく指定してください');
 
+        const start = new Date(startVal + "T00:00:00");
+        const end = new Date(endVal + "T00:00:00");
         const recordMap = {};
         records.forEach(r => recordMap[r.fullDate] = r);
 
         let html = '';
         let current = new Date(start);
-        current.setDate(current.getDate() - current.getDay()); // 日曜日開始に調整
+        current.setDate(current.getDate() - current.getDay());
 
         const weeks = [];
         while (current <= end) {
@@ -375,40 +363,52 @@
 
         for (let p = 0; p < Math.ceil(weeks.length / 4); p++) {
             html += `<div class="print-page">`;
-            if (p === 0) html += `<div class="print-header"><h2>血圧記録帳</h2><p>${start.toLocaleDateString()} ～ ${end.toLocaleDateString()}</p></div>`;
+            if (p === 0) html += `<div class="print-header"><h2>血圧記録帳</h2><p>${startVal} ～ ${endVal}</p></div>`;
             weeks.slice(p * 4, (p + 1) * 4).forEach(w => {
-                html += `<div class="week-group"><div class="weekly-summary">${w.start.toLocaleDateString()} 週</div>`;
+                // 週平均の計算
+                let mS = 0, mD = 0, eS = 0, eD = 0, mC = 0, eC = 0;
+                w.days.forEach(d => {
+                    if (d.data) {
+                        mS += (d.data.m1[0] + d.data.m2[0]) / 2;
+                        mD += (d.data.m1[1] + d.data.m2[1]) / 2;
+                        mC++;
+                        eS += (d.data.e1[0] + d.data.e2[0]) / 2;
+                        eD += (d.data.e1[1] + d.data.e2[1]) / 2;
+                        eC++;
+                    }
+                });
+                const mAvg = mC > 0 ? `${Math.round(mS/mC)}/${Math.round(mD/mC)}` : '--';
+                const eAvg = eC > 0 ? `${Math.round(eS/eC)}/${Math.round(eD/eC)}` : '--';
+
+                html += `<div class="week-group">
+                    <div class="weekly-summary">
+                        ${w.start.toLocaleDateString('ja-JP')} 週<br>
+                        <span class="morning-text">朝平均: ${mAvg}</span> / <span class="evening-text">夜平均: ${eAvg}</span>
+                    </div>`;
                 w.days.forEach(d => {
                     const r = d.data;
+                    const mVal = r ? `${r.m1[0]}/${r.m1[1]}<br><small>(${r.m2[0]}/${r.m2[1]})</small>` : '--';
+                    const eVal = r ? `${r.e1[0]}/${r.e1[1]}<br><small>(${r.e2[0]}/${r.e2[1]})</small>` : '--';
                     html += `
                         <div class="day-row">
                             <div class="day-date">${d.date.getMonth()+1}/${d.date.getDate()}<br>(${['日','月','火','水','木','金','土'][d.date.getDay()]})</div>
-                            <div class="day-values">
-                                <div class="val-m">${r ? r.m1[0]+'/'+r.m1[1] : '--'}</div>
-                                <div class="val-e">${r ? r.e1[0]+'/'+r.e1[1] : '--'}</div>
-                            </div>
+                            <div class="day-values"><div class="val-m">${mVal}</div><div class="val-e">${eVal}</div></div>
                         </div>`;
                 });
                 html += `</div>`;
             });
             html += `</div>`;
         }
-        const container = document.getElementById('printContainer');
-        container.innerHTML = html;
+        document.getElementById('printContainer').innerHTML = html;
         closePrintDialog();
-        setTimeout(() => { window.print(); }, 200);
+        setTimeout(() => { window.print(); }, 500);
     }
 
-    // --- 6. PWA サービスワーカー登録 ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js')
-                .then(reg => console.log('Service Worker Registered'))
-                .catch(err => console.error('Service Worker Registration Failed', err));
+            navigator.serviceWorker.register('sw.js').catch(err => console.error(err));
         });
     }
-
-    // 初回レンダリング
     saveAndRender();
 </script>
 </body>

@@ -230,8 +230,13 @@
         createOptions(p+'_sys', 70, 220, 125);
         createOptions(p+'_dia', 40, 140, 80);
     });
-    // 本日の日付をデフォルトセット
-    document.getElementById('record_date').value = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' }).split(' ')[0];
+
+    // 日本時間での日付セット
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    document.getElementById('record_date').value = `${yyyy}-${mm}-${dd}`;
 
     // --- 3. UI操作 ---
     function step(id, val) {
@@ -250,7 +255,7 @@
             e1: [parseInt(document.getElementById('e1_sys').value), parseInt(document.getElementById('e1_dia').value)],
             e2: [parseInt(document.getElementById('e2_sys').value), parseInt(document.getElementById('e2_dia').value)]
         };
-        // 同じ日付があれば上書き（削除して追加）
+        // 同日付は上書き
         records = records.filter(r => r.fullDate !== dateVal);
         records.unshift(entry);
         records.sort((a,b) => new Date(b.fullDate) - new Date(a.fullDate));
@@ -266,7 +271,7 @@
     function renderHistory() {
         const list = document.getElementById('historyList');
         if (records.length === 0) {
-            list.innerHTML = '<div style="text-align:center;color:#999;padding:20px;">なし</div>';
+            list.innerHTML = '<div style="text-align:center;color:#999;padding:20px;">データがありません</div>';
             return;
         }
         list.innerHTML = records.map(r => {
@@ -288,7 +293,7 @@
     }
 
     function deleteRecord(id) {
-        if(confirm('削除しますか？')) {
+        if(confirm('この記録を削除しますか？')) {
             records = records.filter(r => r.id !== id);
             saveAndRender();
         }
@@ -303,7 +308,7 @@
         const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], {type:'text/csv;charset=utf-8'});
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = `blood_pressure.csv`;
+        a.download = `血圧記録_${new Date().toLocaleDateString()}.csv`;
         a.click();
     }
 
@@ -329,7 +334,7 @@
             }
             records.sort((a,b) => new Date(b.fullDate) - new Date(a.fullDate));
             saveAndRender();
-            alert('取り込み完了');
+            alert('取り込みが完了しました');
         };
         reader.readAsText(file);
     }
@@ -348,7 +353,7 @@
     function executePrint() {
         const start = new Date(document.getElementById('printStartDate').value);
         const end = new Date(document.getElementById('printEndDate').value);
-        if (isNaN(start) || isNaN(end)) return alert('日付を指定してください');
+        if (isNaN(start) || isNaN(end)) return alert('日付を正しく指定してください');
 
         const recordMap = {};
         records.forEach(r => recordMap[r.fullDate] = r);
@@ -394,16 +399,16 @@
         setTimeout(() => { window.print(); }, 200);
     }
 
-    // --- 6. サービスワーカー登録 ---
+    // --- 6. PWA サービスワーカー登録 ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('sw.js')
                 .then(reg => console.log('Service Worker Registered'))
-                .catch(err => console.log('Service Worker Registration Failed', err));
+                .catch(err => console.error('Service Worker Registration Failed', err));
         });
     }
 
-    // 初回実行
+    // 初回レンダリング
     saveAndRender();
 </script>
 </body>

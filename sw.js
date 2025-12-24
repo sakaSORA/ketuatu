@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bp-record-v1';
+const CACHE_NAME = 'bp-record-v2';
 const ASSETS = [
   './',
   './index.html',

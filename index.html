@@ -12,7 +12,7 @@
     <link rel="apple-touch-icon" href="icons/icon-192.png">
 
     <style>
-        /* --- 基本レイアウト・スタイル --- */
+        /* --- 基本レイアウト --- */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -33,24 +33,20 @@
             border-radius: 10px; font-size: 1.1rem; text-align: center; margin-bottom: 12px; font-weight: bold;
         }
 
-        .area-morning {
-            background-color: #fffaf0; border-radius: 12px; padding: 12px; margin-bottom: 12px;
-            border: 1px solid #ffeeba;
-        }
-        .area-evening {
-            background-color: #f0f7ff; border-radius: 12px; padding: 12px; margin-bottom: 12px;
-            border: 1px solid #bee5eb;
-        }
+        .area-morning { background-color: #fffaf0; border-radius: 12px; padding: 10px; margin-bottom: 12px; border: 1px solid #ffeeba; }
+        .area-evening { background-color: #f0f7ff; border-radius: 12px; padding: 10px; margin-bottom: 12px; border: 1px solid #bee5eb; }
 
-        .section-title { font-size: 1rem; font-weight: bold; margin-bottom: 10px; text-align: center; }
+        .section-title { font-size: 1rem; font-weight: bold; margin-bottom: 8px; text-align: center; }
         .morning-text { color: #d68910; }
         .evening-text { color: #2e86de; }
 
-        .stepper-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; }
-        .reading-num { font-size: 0.9rem; font-weight: bold; background: #eee; padding: 4px 8px; border-radius: 6px; }
-        .value-control { display: flex; align-items: center; gap: 4px; }
-        .step-btn { width: 36px; height: 36px; border: 1px solid #ccc; background: white; border-radius: 6px; font-weight: bold; font-size: 1.2rem; cursor: pointer; }
-        .value-control select { width: 70px; height: 38px; border: 1px solid #ccc; border-radius: 6px; font-size: 1.2rem; font-weight: bold; text-align: center; }
+        .stepper-row { display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 8px; }
+        .reading-num { font-size: 0.8rem; font-weight: bold; background: #eee; padding: 4px 6px; border-radius: 4px; }
+        .value-control { display: flex; align-items: center; gap: 2px; }
+        .step-btn { width: 30px; height: 36px; border: 1px solid #ccc; background: white; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        .value-control select { width: 62px; height: 36px; border: 1px solid #ccc; border-radius: 4px; font-size: 1.1rem; font-weight: bold; text-align: center; }
+        
+        .pulse-label { font-size: 0.7rem; color: #666; margin-left: 2px; }
 
         .save-button {
             width: 100%; padding: 15px; background: linear-gradient(135deg, #667eea, #764ba2);
@@ -68,12 +64,19 @@
         .history-date { font-weight: bold; color: #555; }
         .sum-val { font-size: 1.1rem; font-weight: bold; text-align: center; }
         .delete-btn { background: #ffeded; color: #eb4d4b; border: none; border-radius: 6px; padding: 6px; cursor: pointer; }
+        
         .history-details {
             max-height: 0; overflow: hidden; background: #f8f9fa; transition: max-height 0.3s;
-            text-align: center; font-size: 0.9rem; color: #666;
+            text-align: center; font-size: 0.85rem; color: #555;
         }
-        .history-item.open .history-details { max-height: 60px; padding: 8px 0; border-top: 1px dashed #ccc; }
+        .history-item.open .history-details { max-height: 130px; padding: 10px 0; border-top: 1px dashed #ccc; }
+        
+        .reflect-btn {
+            margin-top: 8px; padding: 8px 15px; background: #667eea; color: white;
+            border: none; border-radius: 6px; font-weight: bold; cursor: pointer;
+        }
 
+        /* 印刷設定用ダイアログ */
         .print-dialog-overlay {
             display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0, 0, 0, 0.7); z-index: 1000; align-items: center; justify-content: center; padding: 20px;
@@ -87,7 +90,6 @@
         .dialog-btn.primary { background: #667eea; color: white; }
         .dialog-btn.secondary { background: #eee; }
 
-        /* --- 印刷用設定 --- */
         #printContainer { display: none; }
         @media print {
             body > .container { display: none !important; }
@@ -97,7 +99,6 @@
             .print-header { grid-column: 1 / -1; text-align: center; border-bottom: 2px solid #000; margin-bottom: 5mm; padding-bottom: 2mm; }
             .week-group { border: 1px solid #333; padding: 2mm; display: flex; flex-direction: column; page-break-inside: avoid; }
             .weekly-summary { background: #f0f0f0; padding: 2mm; text-align: center; font-weight: bold; font-size: 9pt; margin-bottom: 2mm; border-bottom: 1px solid #ccc; line-height: 1.4; }
-            .avg-badge { display: inline-block; padding: 1px 4px; border-radius: 3px; font-size: 8pt; }
             .day-row { display: grid; grid-template-columns: 15mm 1fr; border-bottom: 1px solid #ccc; padding: 1mm 0; min-height: 14mm; align-items: center; font-size: 8pt; }
             .day-date { font-weight: bold; text-align: center; }
             .day-values { display: grid; grid-template-columns: 1fr 1fr; text-align: center; line-height: 1.2; }
@@ -108,7 +109,7 @@
 </head>
 <body>
 
-<div class="container">
+<div class="container" id="top">
     <div class="header"><h1>🩺 血圧記録</h1></div>
 
     <div class="input-card">
@@ -128,6 +129,10 @@
                     <select id="m1_dia"></select>
                     <button class="step-btn" onclick="step('m1_dia', 1)">+</button>
                 </div>
+                <div class="value-control">
+                    <span class="pulse-label">脈</span>
+                    <select id="m1_pulse" style="width:55px;"></select>
+                </div>
             </div>
             <div class="stepper-row">
                 <div class="reading-num">②</div>
@@ -140,6 +145,10 @@
                     <button class="step-btn" onclick="step('m2_dia', -1)">-</button>
                     <select id="m2_dia"></select>
                     <button class="step-btn" onclick="step('m2_dia', 1)">+</button>
+                </div>
+                <div class="value-control">
+                    <span class="pulse-label">脈</span>
+                    <select id="m2_pulse" style="width:55px;"></select>
                 </div>
             </div>
         </div>
@@ -158,6 +167,10 @@
                     <select id="e1_dia"></select>
                     <button class="step-btn" onclick="step('e1_dia', 1)">+</button>
                 </div>
+                <div class="value-control">
+                    <span class="pulse-label">脈</span>
+                    <select id="e1_pulse" style="width:55px;"></select>
+                </div>
             </div>
             <div class="stepper-row">
                 <div class="reading-num">②</div>
@@ -170,6 +183,10 @@
                     <button class="step-btn" onclick="step('e2_dia', -1)">-</button>
                     <select id="e2_dia"></select>
                     <button class="step-btn" onclick="step('e2_dia', 1)">+</button>
+                </div>
+                <div class="value-control">
+                    <span class="pulse-label">脈</span>
+                    <select id="e2_pulse" style="width:55px;"></select>
                 </div>
             </div>
         </div>
@@ -213,6 +230,8 @@
 
     function createOptions(id, min, max, def) {
         const sel = document.getElementById(id);
+        if(!sel) return;
+        sel.innerHTML = '';
         for(let i=max; i>=min; i--) {
             const opt = document.createElement('option');
             opt.value = i; opt.textContent = i;
@@ -220,9 +239,12 @@
             sel.appendChild(opt);
         }
     }
+
+    // 各選択項目の初期化
     ['m1','m2','e1','e2'].forEach(p => {
         createOptions(p+'_sys', 70, 220, 125);
         createOptions(p+'_dia', 40, 140, 80);
+        createOptions(p+'_pulse', 40, 140, 70);
     });
 
     const today = new Date();
@@ -231,7 +253,8 @@
     function step(id, val) {
         const el = document.getElementById(id);
         const nextVal = parseInt(el.value) + val;
-        if(el.querySelector(`option[value="${nextVal}"]`)) el.value = nextVal;
+        const opt = el.querySelector(`option[value="${nextVal}"]`);
+        if(opt) el.value = nextVal;
     }
 
     function addRecord() {
@@ -239,16 +262,31 @@
         const entry = {
             id: Date.now(),
             fullDate: dateVal,
-            m1: [parseInt(document.getElementById('m1_sys').value), parseInt(document.getElementById('m1_dia').value)],
-            m2: [parseInt(document.getElementById('m2_sys').value), parseInt(document.getElementById('m2_dia').value)],
-            e1: [parseInt(document.getElementById('e1_sys').value), parseInt(document.getElementById('e1_dia').value)],
-            e2: [parseInt(document.getElementById('e2_sys').value), parseInt(document.getElementById('e2_dia').value)]
+            m1: [parseInt(document.getElementById('m1_sys').value), parseInt(document.getElementById('m1_dia').value), parseInt(document.getElementById('m1_pulse').value)],
+            m2: [parseInt(document.getElementById('m2_sys').value), parseInt(document.getElementById('m2_dia').value), parseInt(document.getElementById('m2_pulse').value)],
+            e1: [parseInt(document.getElementById('e1_sys').value), parseInt(document.getElementById('e1_dia').value), parseInt(document.getElementById('e1_pulse').value)],
+            e2: [parseInt(document.getElementById('e2_sys').value), parseInt(document.getElementById('e2_dia').value), parseInt(document.getElementById('e2_pulse').value)]
         };
         records = records.filter(r => r.fullDate !== dateVal);
         records.unshift(entry);
         records.sort((a,b) => new Date(b.fullDate) - new Date(a.fullDate));
         saveAndRender();
         alert('保存しました');
+    }
+
+    // 履歴から入力欄に反映
+    function loadToInputs(id) {
+        const r = records.find(item => item.id === id);
+        if (!r) return;
+        if (confirm(`${r.fullDate} のデータを入力欄に反映しますか？`)) {
+            document.getElementById('record_date').value = r.fullDate;
+            const setVal = (id, val) => { if(val !== undefined) document.getElementById(id).value = val; };
+            setVal('m1_sys', r.m1[0]); setVal('m1_dia', r.m1[1]); setVal('m1_pulse', r.m1[2]);
+            setVal('m2_sys', r.m2[0]); setVal('m2_dia', r.m2[1]); setVal('m2_pulse', r.m2[2]);
+            setVal('e1_sys', r.e1[0]); setVal('e1_dia', r.e1[1]); setVal('e1_pulse', r.e1[2]);
+            setVal('e2_sys', r.e2[0]); setVal('e2_dia', r.e2[1]); setVal('e2_pulse', r.e2[2]);
+            document.getElementById('top').scrollIntoView({behavior: 'smooth'});
+        }
     }
 
     function saveAndRender() {
@@ -264,6 +302,7 @@
         }
         list.innerHTML = records.map(r => {
             const dParts = r.fullDate.split('-');
+            const p = (val) => val || '--';
             return `
                 <div class="history-item" onclick="this.classList.toggle('open')">
                     <div class="history-summary">
@@ -273,7 +312,9 @@
                         <button class="delete-btn" onclick="event.stopPropagation(); deleteRecord(${r.id})">×</button>
                     </div>
                     <div class="history-details">
-                        <p>朝②: ${r.m2[0]}/${r.m2[1]} | 夜②: ${r.e2[0]}/${r.e2[1]}</p>
+                        <p>朝②: ${r.m2[0]}/${r.m2[1]} (脈:${p(r.m2[2])}) | 夜②: ${r.e2[0]}/${r.e2[1]} (脈:${p(r.e2[2])})</p>
+                        <p>脈拍① 朝:${p(r.m1[2])} / 夜:${p(r.e1[2])}</p>
+                        <button class="reflect-btn" onclick="event.stopPropagation(); loadToInputs(${r.id})">このデータを入力欄に戻す</button>
                     </div>
                 </div>`;
         }).join('');
@@ -286,15 +327,23 @@
         }
     }
 
+    // CSV出力機能（ファイル名：血圧 1月 2日保存.csv）
     function exportToCSV() {
-        let csv = "日付,朝1高,朝1低,朝2高,朝2低,夜1高,夜1低,夜2高,夜2低\n";
+        let csv = "日付,朝1高,朝1低,朝1脈,朝2高,朝2低,朝2脈,夜1高,夜1低,夜1脈,夜2高,夜2低,夜2脈\n";
         records.forEach(r => {
-            csv += `${r.fullDate},${r.m1[0]},${r.m1[1]},${r.m2[0]},${r.m2[1]},${r.e1[0]},${r.e1[1]},${r.e2[0]},${r.e2[1]}\n`;
+            csv += `${r.fullDate},${r.m1[0]},${r.m1[1]},${r.m1[2]||''},${r.m2[0]},${r.m2[1]},${r.m2[2]||''},${r.e1[0]},${r.e1[1]},${r.e1[2]||''},${r.e2[0]},${r.e2[1]},${r.e2[2]||''}\n`;
         });
         const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], {type:'text/csv;charset=utf-8'});
         const a = document.createElement('a');
+        const now = new Date();
+        
+        // --- ファイル名修正箇所 ---
+        const month = now.getMonth() + 1;
+        const date = now.getDate();
+        a.download = `血圧 ${month}月 ${date}日保存.csv`;
+        // -------------------------
+        
         a.href = URL.createObjectURL(blob);
-        a.download = `血圧記録_${new Date().toLocaleDateString()}.csv`;
         a.click();
     }
 
@@ -308,12 +357,14 @@
             for (let i = 1; i < lines.length; i++) {
                 const cols = lines[i].split(',');
                 if (cols.length < 9) continue;
-                const num = (v) => { const n = parseInt(v); return isNaN(n) ? 0 : n; };
+                const n = (v) => { const x = parseInt(v); return isNaN(x) ? 0 : x; };
                 const entry = {
                     id: Date.now() + i,
                     fullDate: cols[0].trim(),
-                    m1: [num(cols[1]), num(cols[2])], m2: [num(cols[3]), num(cols[4])],
-                    e1: [num(cols[5]), num(cols[6])], e2: [num(cols[7]), num(cols[8])]
+                    m1: [n(cols[1]), n(cols[2]), n(cols[3])],
+                    m2: [n(cols[4]), n(cols[5]), n(cols[6])],
+                    e1: [n(cols[7]), n(cols[8]), n(cols[9])],
+                    e2: [n(cols[10]), n(cols[11]), n(cols[12])]
                 };
                 records = records.filter(r => r.fullDate !== entry.fullDate);
                 records.push(entry);
@@ -321,7 +372,7 @@
             }
             records.sort((a,b) => new Date(b.fullDate) - new Date(a.fullDate));
             saveAndRender();
-            alert(`${count}件のデータを取り込みました`);
+            alert(`${count}件取り込みました`);
         };
         reader.readAsText(file);
     }
@@ -339,17 +390,14 @@
     function executePrint() {
         const startVal = document.getElementById('printStartDate').value;
         const endVal = document.getElementById('printEndDate').value;
-        if (!startVal || !endVal) return alert('日付を正しく指定してください');
-
+        if (!startVal || !endVal) return alert('日付を指定してください');
         const start = new Date(startVal + "T00:00:00");
         const end = new Date(endVal + "T00:00:00");
         const recordMap = {};
         records.forEach(r => recordMap[r.fullDate] = r);
-
         let html = '';
         let current = new Date(start);
         current.setDate(current.getDate() - current.getDay());
-
         const weeks = [];
         while (current <= end) {
             const week = { start: new Date(current), days: [] };
@@ -360,40 +408,22 @@
             }
             weeks.push(week);
         }
-
         for (let p = 0; p < Math.ceil(weeks.length / 4); p++) {
             html += `<div class="print-page">`;
             if (p === 0) html += `<div class="print-header"><h2>血圧記録帳</h2><p>${startVal} ～ ${endVal}</p></div>`;
             weeks.slice(p * 4, (p + 1) * 4).forEach(w => {
-                // 週平均の計算
                 let mS = 0, mD = 0, eS = 0, eD = 0, mC = 0, eC = 0;
-                w.days.forEach(d => {
-                    if (d.data) {
-                        mS += (d.data.m1[0] + d.data.m2[0]) / 2;
-                        mD += (d.data.m1[1] + d.data.m2[1]) / 2;
-                        mC++;
-                        eS += (d.data.e1[0] + d.data.e2[0]) / 2;
-                        eD += (d.data.e1[1] + d.data.e2[1]) / 2;
-                        eC++;
-                    }
-                });
-                const mAvg = mC > 0 ? `${Math.round(mS/mC)}/${Math.round(mD/mC)}` : '--';
-                const eAvg = eC > 0 ? `${Math.round(eS/eC)}/${Math.round(eD/eC)}` : '--';
-
-                html += `<div class="week-group">
-                    <div class="weekly-summary">
-                        ${w.start.toLocaleDateString('ja-JP')} 週<br>
-                        <span class="morning-text">朝平均: ${mAvg}</span> / <span class="evening-text">夜平均: ${eAvg}</span>
-                    </div>`;
+                w.days.forEach(d => { if (d.data) {
+                    mS += (d.data.m1[0] + d.data.m2[0]) / 2; mD += (d.data.m1[1] + d.data.m2[1]) / 2; mC++;
+                    eS += (d.data.e1[0] + d.data.e2[0]) / 2; eD += (d.data.e1[1] + d.data.e2[1]) / 2; eC++;
+                }});
+                const avg = (s, d, c) => c > 0 ? `${Math.round(s/c)}/${Math.round(d/c)}` : '--';
+                html += `<div class="week-group"><div class="weekly-summary">${w.start.toLocaleDateString('ja-JP')} 週<br><span class="morning-text">朝平均: ${avg(mS,mD,mC)}</span> / <span class="evening-text">夜平均: ${avg(eS,eD,eC)}</span></div>`;
                 w.days.forEach(d => {
                     const r = d.data;
                     const mVal = r ? `${r.m1[0]}/${r.m1[1]}<br><small>(${r.m2[0]}/${r.m2[1]})</small>` : '--';
                     const eVal = r ? `${r.e1[0]}/${r.e1[1]}<br><small>(${r.e2[0]}/${r.e2[1]})</small>` : '--';
-                    html += `
-                        <div class="day-row">
-                            <div class="day-date">${d.date.getMonth()+1}/${d.date.getDate()}<br>(${['日','月','火','水','木','金','土'][d.date.getDay()]})</div>
-                            <div class="day-values"><div class="val-m">${mVal}</div><div class="val-e">${eVal}</div></div>
-                        </div>`;
+                    html += `<div class="day-row"><div class="day-date">${d.date.getMonth()+1}/${d.date.getDate()}<br>(${['日','月','火','水','木','金','土'][d.date.getDay()]})</div><div class="day-values"><div class="val-m">${mVal}</div><div class="val-e">${eVal}</div></div></div>`;
                 });
                 html += `</div>`;
             });
@@ -405,9 +435,7 @@
     }
 
     if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js').catch(err => console.error(err));
-        });
+        window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(err => {}); });
     }
     saveAndRender();
 </script>

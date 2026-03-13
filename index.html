@@ -83,47 +83,88 @@
         }
         .print-dialog { background: white; border-radius: 16px; padding: 20px; max-width: 400px; width: 100%; }
 
-        /* --- 印刷用設定 (A4 / 4週間 1枚) --- */
+        /* --- 印刷用設定 (A4 / 4週間 1枚 平均値特化版) --- */
         #printContainer { display: none; }
         @media print {
             body > .container { display: none !important; }
             #printContainer { display: block !important; position: absolute; left: 0; top: 0; width: 100%; background: white; color: black; }
-            @page { size: A4; margin: 8mm; }
+            @page { size: A4; margin: 10mm; }
             
             .print-page { 
                 page-break-after: always; 
                 display: grid; 
                 grid-template-columns: 1fr 1fr; 
                 grid-template-rows: 1fr 1fr; 
-                gap: 4mm; 
-                height: 270mm; /* A4に収める高さ */
-                padding: 2mm;
+                gap: 5mm; 
+                height: 275mm; 
+                box-sizing: border-box;
             }
-            .print-header { grid-column: 1 / -1; text-align: center; border-bottom: 2px solid #000; margin-bottom: 2mm; height: 15mm; }
             
             .week-group { 
-                border: 1.5px solid #000; 
-                padding: 2mm; 
+                border: 2px solid #333; 
+                border-radius: 4px;
                 display: flex; 
                 flex-direction: column; 
                 overflow: hidden;
+                box-sizing: border-box;
             }
             
-            /* 週平均の視認性を極大化 */
             .weekly-summary { 
-                background: #eee; border-bottom: 2px solid #333; padding: 2mm; 
-                text-align: center; font-weight: bold; margin-bottom: 2mm;
+                background: #f8f9fa; border-bottom: 2px solid #333; padding: 3mm; 
+                text-align: center; font-weight: bold;
             }
-            .avg-row { display: flex; justify-content: space-around; align-items: center; margin-top: 1mm; }
-            .avg-item { line-height: 1.2; }
-            .avg-label { font-size: 7pt; color: #333; display: block; }
-            .avg-val-large { font-size: 13pt; letter-spacing: -0.5pt; } 
+            .week-title { font-size: 10pt; color: #333; margin-bottom: 1.5mm; }
+            .avg-row { display: flex; justify-content: space-around; align-items: center; }
+            .avg-item { line-height: 1.2; text-align: center; }
+            .avg-label { font-size: 9pt; color: #555; display: block; margin-bottom: 2px; }
+            .avg-val-large { font-size: 15pt; letter-spacing: -0.5pt; font-family: sans-serif; } 
+            .avg-pulse { font-size: 9pt; color: #555; }
             
-            .day-row { display: grid; grid-template-columns: 13mm 1fr; border-bottom: 1px solid #ccc; padding: 1mm 0; align-items: center; font-size: 7.5pt; }
-            .day-date { font-weight: bold; text-align: center; border-right: 1px solid #eee; height: 100%; display: flex; align-items: center; justify-content: center; }
-            .day-values { display: grid; grid-template-columns: 1fr 1fr; text-align: center; }
-            .val-m { border-right: 0.5px dashed #999; }
-            small { font-size: 6.5pt; color: #444; display: block; line-height: 1; }
+            .day-row { 
+                display: grid; 
+                grid-template-columns: 16mm 1fr; 
+                border-bottom: 1px solid #ccc; 
+                flex: 1; 
+                align-items: stretch; 
+            }
+            .day-row:last-child { border-bottom: none; } 
+
+            .day-date { 
+                font-size: 10.5pt;
+                font-weight: bold; 
+                text-align: center; 
+                background: #f8f9fa;
+                border-right: 1px solid #ccc; 
+                display: flex; 
+                flex-direction: column; 
+                align-items: center; 
+                justify-content: center; 
+            }
+            .day-values { 
+                display: grid; 
+                grid-template-columns: 1fr 1fr; 
+                text-align: center; 
+            }
+            .val-cell {
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                padding: 1mm;
+            }
+            .val-m { border-right: 1px dashed #aaa; }
+            
+            /* 日々の平均値（メイン）と脈拍（サブ）のフォント設定 */
+            .bp-main { font-size: 13.5pt; font-weight: bold; line-height: 1.2; margin-bottom: 2mm; }
+            .bp-sub { font-size: 10.5pt; font-weight: bold; color: #444; line-height: 1.2; }
+            
+            .prefix-text { font-size: 9pt; font-weight: normal; color: #666; margin-right: 2px; vertical-align: middle; }
+            .suffix-text { font-size: 8.5pt; font-weight: normal; color: #666; margin-left: 2px; }
+
+            .val-m .bp-main { color: #b66a00; } 
+            .val-m .bp-sub { color: #b66a00; } 
+            .val-e .bp-main { color: #1a5ca3; } 
+            .val-e .bp-sub { color: #1a5ca3; } 
         }
     </style>
 </head>
@@ -437,35 +478,69 @@
         for (let p = 0; p < Math.ceil(weeks.length / 4); p++) {
             html += `<div class="print-page">`;
             weeks.slice(p * 4, (p + 1) * 4).forEach(w => {
-                let mS = 0, mD = 0, mP = 0, eS = 0, eD = 0, eP = 0, mC = 0, eC = 0;
+                let mSumS = 0, mSumD = 0, mSumP = 0, mCount = 0;
+                let eSumS = 0, eSumD = 0, eSumP = 0, eCount = 0;
+                
                 w.days.forEach(d => { if (d.data) {
-                    mS += (d.data.m1[0] + d.data.m2[0]) / 2; mD += (d.data.m1[1] + d.data.m2[1]) / 2; mP += (d.data.m1[2] + d.data.m2[2]) / 2; mC++;
-                    eS += (d.data.e1[0] + d.data.e2[0]) / 2; eD += (d.data.e1[1] + d.data.e2[1]) / 2; eP += (d.data.e1[2] + d.data.e2[2]) / 2; eC++;
+                    mSumS += (d.data.m1[0] + d.data.m2[0]) / 2; mSumD += (d.data.m1[1] + d.data.m2[1]) / 2; mSumP += (d.data.m1[2] + d.data.m2[2]) / 2; mCount++;
+                    eSumS += (d.data.e1[0] + d.data.e2[0]) / 2; eSumD += (d.data.e1[1] + d.data.e2[1]) / 2; eSumP += (d.data.e1[2] + d.data.e2[2]) / 2; eCount++;
                 }});
                 
                 const avgItem = (label, s, d, p, c, color) => {
-                    const val = c > 0 ? `<b class="avg-val-large" style="color:${color}">${Math.round(s/c)}/${Math.round(d/c)}</b> <small>(脈:${Math.round(p/c)})</small>` : '--';
+                    const val = c > 0 ? `<div style="color:${color};"><span class="avg-val-large">${Math.round(s/c)}/${Math.round(d/c)}</span> <span class="avg-pulse">(脈:${Math.round(p/c)})</span></div>` : '<div class="avg-val-large">--</div>';
                     return `<div class="avg-item"><span class="avg-label">${label}</span>${val}</div>`;
                 };
 
+                // 第何週かを計算 (1月1日が含まれる週を第1週とする)
+                const sat = new Date(w.start);
+                sat.setDate(sat.getDate() + 6); // その週の土曜日を基準にして年を判定
+                const jan1 = new Date(sat.getFullYear(), 0, 1);
+                const jan1Sun = new Date(jan1);
+                jan1Sun.setDate(jan1.getDate() - jan1.getDay()); // 1月1日が含まれる週の日曜日
+                const weekNum = Math.round((w.start.getTime() - jan1Sun.getTime()) / 604800000) + 1; // 604800000ms = 7日間
+
                 html += `<div class="week-group">
                     <div class="weekly-summary">
-                        <div style="font-size:7pt; color:#666;">${w.start.toLocaleDateString('ja-JP')} 週 の平均</div>
+                        <div class="week-title">${w.start.getMonth()+1}/${w.start.getDate()} 週 (第${weekNum}週) の全体平均</div>
                         <div class="avg-row">
-                            ${avgItem('朝平均', mS, mD, mP, mC, '#b37400')}
-                            ${avgItem('夜平均', eS, eD, eP, eC, '#1a5ca3')}
+                            ${avgItem('朝平均', mSumS, mSumD, mSumP, mCount, '#b66a00')}
+                            ${avgItem('夜平均', eSumS, eSumD, eSumP, eCount, '#1a5ca3')}
                         </div>
                     </div>`;
+                    
                 w.days.forEach(d => {
                     const r = d.data;
-                    const mVal = r ? `${r.m1[0]}/${r.m1[1]} <small>脈${r.m1[2]} (${r.m2[0]}/${r.m2[1]} 脈${r.m2[2]})</small>` : '--';
-                    const eVal = r ? `${r.e1[0]}/${r.e1[1]} <small>脈${r.e1[2]} (${r.e2[0]}/${r.e2[1]} 脈${r.e2[2]})</small>` : '--';
+                    const dayStr = ['日','月','火','水','木','金','土'][d.date.getDay()];
+                    
+                    let mHtml = '<div class="val-cell val-m">--</div>';
+                    let eHtml = '<div class="val-cell val-e">--</div>';
+                    
+                    if (r) {
+                        // 日々の平均値を計算
+                        const mSysAvg = Math.round((r.m1[0] + r.m2[0]) / 2);
+                        const mDiaAvg = Math.round((r.m1[1] + r.m2[1]) / 2);
+                        const mPlsAvg = Math.round((r.m1[2] + r.m2[2]) / 2);
+                        
+                        const eSysAvg = Math.round((r.e1[0] + r.e2[0]) / 2);
+                        const eDiaAvg = Math.round((r.e1[1] + r.e2[1]) / 2);
+                        const ePlsAvg = Math.round((r.e1[2] + r.e2[2]) / 2);
+
+                        mHtml = `<div class="val-cell val-m">
+                                    <div class="bp-main"><span class="prefix-text">[平均]</span>${mSysAvg}/${mDiaAvg}</div>
+                                    <div class="bp-sub">${mPlsAvg}<span class="suffix-text">[拍/分]</span></div>
+                                 </div>`;
+                        eHtml = `<div class="val-cell val-e">
+                                    <div class="bp-main"><span class="prefix-text">[平均]</span>${eSysAvg}/${eDiaAvg}</div>
+                                    <div class="bp-sub">${ePlsAvg}<span class="suffix-text">[拍/分]</span></div>
+                                 </div>`;
+                    }
+                    
                     html += `
                         <div class="day-row">
-                            <div class="day-date">${d.date.getMonth()+1}/${d.date.getDate()}<br>(${['日','月','火','水','木','金','土'][d.date.getDay()]})</div>
+                            <div class="day-date"><span>${d.date.getMonth()+1}/${d.date.getDate()}</span><span style="font-size:0.8em;">(${dayStr})</span></div>
                             <div class="day-values">
-                                <div class="val-m">${mVal}</div>
-                                <div class="val-e" style="color:#1a5ca3">${eVal}</div>
+                                ${mHtml}
+                                ${eHtml}
                             </div>
                         </div>`;
                 });

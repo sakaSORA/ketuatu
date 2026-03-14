@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+Sengoku Otome<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
@@ -263,7 +263,10 @@
     </div>
 
     <div class="history-section">
-        <h3 style="margin-bottom: 10px; font-size: 0.9rem;">📋 履歴 (タップで詳細)</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3 style="font-size: 0.9rem; margin: 0;">📋 履歴 (タップで詳細)</h3>
+            <select id="historyMonthSelect" style="padding: 4px 8px; border-radius: 6px; border: 1px solid #ccc; font-weight: bold; background: #f8f9fa; font-size: 0.9rem;" onchange="onMonthChange()"></select>
+        </div>
         <div id="historyList"></div>
     </div>
 </div>
@@ -288,6 +291,7 @@
 
 <script>
     let records = JSON.parse(localStorage.getItem('bp_records_integrated')) || [];
+    let currentSelectedMonth = ""; // 追加: 表示中の月を保持
 
     function createOptions(id, min, max, def) {
         const sel = document.getElementById(id);
@@ -330,6 +334,11 @@
         records = records.filter(r => r.fullDate !== dateVal);
         records.unshift(entry);
         records.sort((a,b) => new Date(b.fullDate) - new Date(a.fullDate));
+        
+        // 追加: 保存したデータの月を「選択中の月」としてセットする
+        const parts = dateVal.split('-');
+        currentSelectedMonth = `${parts[0]}-${String(parts[1]).padStart(2, '0')}`;
+        
         saveAndRender();
         alert('保存しました');
     }
@@ -353,13 +362,75 @@
         renderHistory();
     }
 
+    // --- 追加機能: 月選択プルダウンの構築 ---
+    function updateMonthSelect() {
+        const select = document.getElementById('historyMonthSelect');
+        let currentVal = currentSelectedMonth || select.value; 
+        select.innerHTML = '';
+        
+        if (records.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = "";
+            opt.textContent = "データなし";
+            select.appendChild(opt);
+            return;
+        }
+
+        const months = new Set();
+        records.forEach(r => {
+            const parts = r.fullDate.split('-');
+            months.add(`${parts[0]}-${String(parts[1]).padStart(2, '0')}`);
+        });
+
+        const sortedMonths = Array.from(months).sort().reverse();
+
+        sortedMonths.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            const parts = m.split('-');
+            opt.textContent = `${parts[0]}年${parseInt(parts[1])}月`;
+            select.appendChild(opt);
+        });
+
+        // 現在選択中の月があれば維持、なければ最新の月を選択
+        if (currentVal && sortedMonths.includes(currentVal)) {
+            select.value = currentVal;
+        } else {
+            select.value = sortedMonths[0]; 
+        }
+        currentSelectedMonth = select.value;
+    }
+
+    function onMonthChange() {
+        currentSelectedMonth = document.getElementById('historyMonthSelect').value;
+        renderHistory();
+    }
+
+    // --- 変更: 指定された月のみフィルタリングして表示 ---
     function renderHistory() {
+        updateMonthSelect(); // プルダウンを最新化
+
         const list = document.getElementById('historyList');
+        const selectedMonth = document.getElementById('historyMonthSelect').value;
+
         if (records.length === 0) {
             list.innerHTML = '<div style="text-align:center;color:#999;padding:20px;">データがありません</div>';
             return;
         }
-        list.innerHTML = records.map(r => {
+
+        // 月でフィルタリング
+        const filteredRecords = records.filter(r => {
+            const parts = r.fullDate.split('-');
+            const rMonth = `${parts[0]}-${String(parts[1]).padStart(2, '0')}`;
+            return rMonth === selectedMonth;
+        });
+
+        if (filteredRecords.length === 0) {
+            list.innerHTML = '<div style="text-align:center;color:#999;padding:20px;">この月のデータはありません</div>';
+            return;
+        }
+
+        list.innerHTML = filteredRecords.map(r => {
             const dParts = r.fullDate.split('-');
             const p = (val) => val || '--';
             return `

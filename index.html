@@ -1,4 +1,4 @@
-Sengoku Otome<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
@@ -69,7 +69,8 @@ Sengoku Otome<!DOCTYPE html>
             max-height: 0; overflow: hidden; background: #f8f9fa; transition: max-height 0.3s;
             text-align: center; font-size: 0.85rem; color: #555;
         }
-        .history-item.open .history-details { max-height: 130px; padding: 10px 0; border-top: 1px dashed #ccc; }
+        /* 【修正⑥】詳細展開時の高さを拡張（4行表示に対応） */
+        .history-item.open .history-details { max-height: 160px; padding: 10px 0; border-top: 1px dashed #ccc; }
         
         .reflect-btn {
             margin-top: 8px; padding: 8px 15px; background: #667eea; color: white;
@@ -290,8 +291,18 @@ Sengoku Otome<!DOCTYPE html>
 <div id="printContainer"></div>
 
 <script>
-    let records = JSON.parse(localStorage.getItem('bp_records_integrated')) || [];
-    let currentSelectedMonth = ""; // 追加: 表示中の月を保持
+    let records = [];
+    // 【修正④】未エクスポートの保存があるかどうかを管理するフラグ
+    let hasUnsavedExport = false;
+    let currentSelectedMonth = "";
+
+    // 起動時にlocalStorageから読み込む（エラーハンドリング付き）
+    try {
+        records = JSON.parse(localStorage.getItem('bp_records_integrated')) || [];
+    } catch (e) {
+        records = [];
+        alert('⚠️ 保存データの読み込みに失敗しました。データが破損している可能性があります。');
+    }
 
     function createOptions(id, min, max, def) {
         const sel = document.getElementById(id);
@@ -323,6 +334,10 @@ Sengoku Otome<!DOCTYPE html>
 
     function addRecord() {
         const dateVal = document.getElementById('record_date').value;
+        if (!dateVal) {
+            alert('日付を入力してください');
+            return;
+        }
         const entry = {
             id: Date.now(),
             fullDate: dateVal,
@@ -335,10 +350,11 @@ Sengoku Otome<!DOCTYPE html>
         records.unshift(entry);
         records.sort((a,b) => new Date(b.fullDate) - new Date(a.fullDate));
         
-        // 追加: 保存したデータの月を「選択中の月」としてセットする
         const parts = dateVal.split('-');
         currentSelectedMonth = `${parts[0]}-${String(parts[1]).padStart(2, '0')}`;
         
+        // 【修正④】記録を保存したらエクスポート未実施フラグを立てる
+        hasUnsavedExport = true;
         saveAndRender();
         alert('保存しました');
     }
@@ -348,7 +364,7 @@ Sengoku Otome<!DOCTYPE html>
         if (!r) return;
         if (confirm(`${r.fullDate} のデータを入力欄に反映しますか？`)) {
             document.getElementById('record_date').value = r.fullDate;
-            const setVal = (id, val) => { if(val !== undefined) document.getElementById(id).value = val; };
+            const setVal = (eid, val) => { if(val !== undefined) document.getElementById(eid).value = val; };
             setVal('m1_sys', r.m1[0]); setVal('m1_dia', r.m1[1]); setVal('m1_pulse', r.m1[2]);
             setVal('m2_sys', r.m2[0]); setVal('m2_dia', r.m2[1]); setVal('m2_pulse', r.m2[2]);
             setVal('e1_sys', r.e1[0]); setVal('e1_dia', r.e1[1]); setVal('e1_pulse', r.e1[2]);
@@ -357,12 +373,17 @@ Sengoku Otome<!DOCTYPE html>
         }
     }
 
+    // 【修正⑤】localStorage書き込みエラーをキャッチして通知
     function saveAndRender() {
-        localStorage.setItem('bp_records_integrated', JSON.stringify(records));
+        try {
+            localStorage.setItem('bp_records_integrated', JSON.stringify(records));
+        } catch (e) {
+            alert('⚠️ 保存容量が上限に達しました。\n「📊 出力」からCSVに書き出し、古いデータを整理してください。');
+        }
         renderHistory();
     }
 
-    // --- 追加機能: 月選択プルダウンの構築 ---
+    // --- 月選択プルダウンの構築 ---
     function updateMonthSelect() {
         const select = document.getElementById('historyMonthSelect');
         let currentVal = currentSelectedMonth || select.value; 
@@ -392,7 +413,6 @@ Sengoku Otome<!DOCTYPE html>
             select.appendChild(opt);
         });
 
-        // 現在選択中の月があれば維持、なければ最新の月を選択
         if (currentVal && sortedMonths.includes(currentVal)) {
             select.value = currentVal;
         } else {
@@ -406,9 +426,9 @@ Sengoku Otome<!DOCTYPE html>
         renderHistory();
     }
 
-    // --- 変更: 指定された月のみフィルタリングして表示 ---
+    // --- 指定された月のみフィルタリングして表示 ---
     function renderHistory() {
-        updateMonthSelect(); // プルダウンを最新化
+        updateMonthSelect();
 
         const list = document.getElementById('historyList');
         const selectedMonth = document.getElementById('historyMonthSelect').value;
@@ -418,7 +438,6 @@ Sengoku Otome<!DOCTYPE html>
             return;
         }
 
-        // 月でフィルタリング
         const filteredRecords = records.filter(r => {
             const parts = r.fullDate.split('-');
             const rMonth = `${parts[0]}-${String(parts[1]).padStart(2, '0')}`;
@@ -430,9 +449,10 @@ Sengoku Otome<!DOCTYPE html>
             return;
         }
 
+        // 【修正⑥】詳細表示を整合性のある4行構成に修正
         list.innerHTML = filteredRecords.map(r => {
             const dParts = r.fullDate.split('-');
-            const p = (val) => val || '--';
+            const p = (val) => (val !== undefined && val !== 0) ? val : '--';
             return `
                 <div class="history-item" onclick="this.classList.toggle('open')">
                     <div class="history-summary">
@@ -442,8 +462,8 @@ Sengoku Otome<!DOCTYPE html>
                         <button class="delete-btn" onclick="event.stopPropagation(); deleteRecord(${r.id})">×</button>
                     </div>
                     <div class="history-details">
-                        <p>朝②: ${r.m2[0]}/${r.m2[1]} (脈:${p(r.m2[2])}) | 夜②: ${r.e2[0]}/${r.e2[1]} (脈:${p(r.e2[2])})</p>
-                        <p>脈拍① 朝:${p(r.m1[2])} / 夜:${p(r.e1[2])}</p>
+                        <p>朝① ${r.m1[0]}/${r.m1[1]} (脈:${p(r.m1[2])}) ｜ 朝② ${r.m2[0]}/${r.m2[1]} (脈:${p(r.m2[2])})</p>
+                        <p>夜① ${r.e1[0]}/${r.e1[1]} (脈:${p(r.e1[2])}) ｜ 夜② ${r.e2[0]}/${r.e2[1]} (脈:${p(r.e2[2])})</p>
                         <button class="reflect-btn" onclick="event.stopPropagation(); loadToInputs(${r.id})">このデータを入力欄に戻す</button>
                     </div>
                 </div>`;
@@ -466,20 +486,28 @@ Sengoku Otome<!DOCTYPE html>
         const a = document.createElement('a');
         const now = new Date();
         a.download = `血圧 ${now.getMonth()+1}月 ${now.getDate()}日保存.csv`;
-        a.href = URL.createObjectURL(blob);
+        // 【修正③】URLオブジェクトのメモリリークを防ぐ
+        const url = URL.createObjectURL(blob);
+        a.href = url;
         a.click();
+        URL.revokeObjectURL(url);
+        // 【修正④】エクスポート完了でフラグをリセット
+        hasUnsavedExport = false;
     }
 
     function importFromCSV(input) {
         const file = input.files[0];
         if (!file) return;
+        // 【修正②】同じファイルを再インポートできるようにリセット
+        input.value = '';
         const reader = new FileReader();
         reader.onload = function(e) {
             const lines = e.target.result.split(/\r\n|\n/);
             let count = 0;
             for (let i = 1; i < lines.length; i++) {
                 const cols = lines[i].split(',');
-                if (cols.length < 9) continue;
+                // 【修正①】エクスポートの13列（日付+12データ）に合わせてチェック
+                if (cols.length < 13) continue;
                 const n = (v) => { const x = parseInt(v); return isNaN(x) ? 0 : x; };
                 const entry = {
                     id: Date.now() + i,
@@ -489,11 +517,14 @@ Sengoku Otome<!DOCTYPE html>
                     e1: [n(cols[7]), n(cols[8]), n(cols[9])],
                     e2: [n(cols[10]), n(cols[11]), n(cols[12])]
                 };
+                if (!entry.fullDate) continue;
                 records = records.filter(r => r.fullDate !== entry.fullDate);
                 records.push(entry);
                 count++;
             }
             records.sort((a,b) => new Date(b.fullDate) - new Date(a.fullDate));
+            // 取り込み後はエクスポート未実施フラグを立てる
+            hasUnsavedExport = true;
             saveAndRender();
             alert(`${count}件取り込みました`);
         };
@@ -510,7 +541,6 @@ Sengoku Otome<!DOCTYPE html>
     }
     function closePrintDialog() { document.getElementById('printDialog').style.display = 'none'; }
 
-    // 日付マッチング用正規化関数 (2025-12-1 と 2025-12-01 両方対応)
     function normalizeDate(dStr) {
         if (!dStr) return "";
         const parts = dStr.split('-');
@@ -526,13 +556,12 @@ Sengoku Otome<!DOCTYPE html>
         const start = new Date(startVal.replace(/-/g, '/') + " 00:00:00");
         const end = new Date(endVal.replace(/-/g, '/') + " 00:00:00");
         
-        // データを正規化してマップ化 (12-1 と 12-01 の混在を解決)
         const recordMap = {};
         records.forEach(r => recordMap[normalizeDate(r.fullDate)] = r);
 
         let html = '';
         let current = new Date(start);
-        current.setDate(current.getDate() - current.getDay()); // 日曜日に合わせる
+        current.setDate(current.getDate() - current.getDay());
 
         const weeks = [];
         while (current <= end) {
@@ -545,7 +574,6 @@ Sengoku Otome<!DOCTYPE html>
             weeks.push(week);
         }
 
-        // 4週間ごとにページを分ける
         for (let p = 0; p < Math.ceil(weeks.length / 4); p++) {
             html += `<div class="print-page">`;
             weeks.slice(p * 4, (p + 1) * 4).forEach(w => {
@@ -557,22 +585,19 @@ Sengoku Otome<!DOCTYPE html>
                     eSumS += (d.data.e1[0] + d.data.e2[0]) / 2; eSumD += (d.data.e1[1] + d.data.e2[1]) / 2; eSumP += (d.data.e1[2] + d.data.e2[2]) / 2; eCount++;
                 }});
                 
-                const avgItem = (label, s, d, p, c, color) => {
-                    const val = c > 0 ? `<div style="color:${color};"><span class="avg-val-large">${Math.round(s/c)}/${Math.round(d/c)}</span> <span class="avg-pulse">(脈:${Math.round(p/c)})</span></div>` : '<div class="avg-val-large">--</div>';
+                const avgItem = (label, s, d, p2, c, color) => {
+                    const val = c > 0 ? `<div style="color:${color};"><span class="avg-val-large">${Math.round(s/c)}/${Math.round(d/c)}</span> <span class="avg-pulse">(脈:${Math.round(p2/c)})</span></div>` : '<div class="avg-val-large">--</div>';
                     return `<div class="avg-item"><span class="avg-label">${label}</span>${val}</div>`;
                 };
 
-                // 第何週かを計算 (1月1日が含まれる週を第1週とする)
-                const sat = new Date(w.start);
-                sat.setDate(sat.getDate() + 6); // その週の土曜日を基準にして年を判定
-                const jan1 = new Date(sat.getFullYear(), 0, 1);
-                const jan1Sun = new Date(jan1);
-                jan1Sun.setDate(jan1.getDate() - jan1.getDay()); // 1月1日が含まれる週の日曜日
-                const weekNum = Math.round((w.start.getTime() - jan1Sun.getTime()) / 604800000) + 1; // 604800000ms = 7日間
+                // 【修正⑦】週番号の代わりに「〇/〇〜〇/〇」形式で表示（年またぎバグを回避）
+                const weekEnd = new Date(w.start);
+                weekEnd.setDate(weekEnd.getDate() + 6);
+                const weekRangeStr = `${w.start.getMonth()+1}/${w.start.getDate()}〜${weekEnd.getMonth()+1}/${weekEnd.getDate()}`;
 
                 html += `<div class="week-group">
                     <div class="weekly-summary">
-                        <div class="week-title">${w.start.getMonth()+1}/${w.start.getDate()} 週 (第${weekNum}週) の全体平均</div>
+                        <div class="week-title">${weekRangeStr} の全体平均</div>
                         <div class="avg-row">
                             ${avgItem('朝平均', mSumS, mSumD, mSumP, mCount, '#b66a00')}
                             ${avgItem('夜平均', eSumS, eSumD, eSumP, eCount, '#1a5ca3')}
@@ -587,7 +612,6 @@ Sengoku Otome<!DOCTYPE html>
                     let eHtml = '<div class="val-cell val-e">--</div>';
                     
                     if (r) {
-                        // 日々の平均値を計算
                         const mSysAvg = Math.round((r.m1[0] + r.m2[0]) / 2);
                         const mDiaAvg = Math.round((r.m1[1] + r.m2[1]) / 2);
                         const mPlsAvg = Math.round((r.m1[2] + r.m2[2]) / 2);
@@ -623,6 +647,14 @@ Sengoku Otome<!DOCTYPE html>
         closePrintDialog();
         setTimeout(() => { window.print(); }, 500);
     }
+
+    // 【修正④】CSVエクスポートをしていない新規保存がある場合のみ終了警告を表示
+    window.addEventListener('beforeunload', function (e) {
+        if (hasUnsavedExport) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
 
     saveAndRender();
 </script>

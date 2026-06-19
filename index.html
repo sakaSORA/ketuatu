@@ -57,6 +57,13 @@
         .btn-print { background: #10b981; }
         .btn-export { background: #f39c12; }
         .btn-import { background: #7f8c8d; }
+        .storage-status {
+            margin-top: 10px; padding: 8px 10px; border-radius: 8px;
+            background: #f3f4f6; color: #4b5563; font-size: 0.75rem; line-height: 1.5;
+            text-align: center;
+        }
+        .storage-status.warning { background: #fff7ed; color: #9a3412; }
+        .storage-status.error { background: #fef2f2; color: #b91c1c; }
 
         .history-section { background: white; border-radius: 16px; padding: 15px; min-height: 150px; }
         .history-item { border-bottom: 1px solid #eee; }
@@ -69,8 +76,7 @@
             max-height: 0; overflow: hidden; background: #f8f9fa; transition: max-height 0.3s;
             text-align: center; font-size: 0.85rem; color: #555;
         }
-        /* 【修正⑥】詳細展開時の高さを拡張（4行表示に対応） */
-        .history-item.open .history-details { max-height: 160px; padding: 10px 0; border-top: 1px dashed #ccc; }
+        .history-item.open .history-details { max-height: 130px; padding: 10px 0; border-top: 1px dashed #ccc; }
         
         .reflect-btn {
             margin-top: 8px; padding: 8px 15px; background: #667eea; color: white;
@@ -100,6 +106,7 @@
                 height: 275mm; 
                 box-sizing: border-box;
             }
+            .print-page:last-child { page-break-after: auto; }
             
             .week-group { 
                 border: 2px solid #333; 
@@ -260,14 +267,12 @@
             <button class="tool-btn btn-export" onclick="exportToCSV()">📊 出力</button>
             <button class="tool-btn btn-import" onclick="document.getElementById('csvFile').click()">📥 取込</button>
         </div>
-        <input type="file" id="csvFile" style="display:none" onchange="importFromCSV(this)">
+        <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none" onchange="importFromCSV(this)">
+        <div id="storageStatus" class="storage-status">保存領域を確認しています…</div>
     </div>
 
     <div class="history-section">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <h3 style="font-size: 0.9rem; margin: 0;">📋 履歴 (タップで詳細)</h3>
-            <select id="historyMonthSelect" style="padding: 4px 8px; border-radius: 6px; border: 1px solid #ccc; font-weight: bold; background: #f8f9fa; font-size: 0.9rem;" onchange="onMonthChange()"></select>
-        </div>
+        <h3 style="margin-bottom: 10px; font-size: 0.9rem;">📋 履歴 (タップで詳細)</h3>
         <div id="historyList"></div>
     </div>
 </div>
@@ -291,17 +296,172 @@
 <div id="printContainer"></div>
 
 <script>
+    const STORAGE_KEY = 'bp_records_integrated';
+    const BACKUP_KEY = 'bp_records_integrated_backup';
+    const BACKUP_DATE_KEY = 'bp_records_last_export';
+    const DB_NAME = 'bp_record_database';
+    const DB_STORE = 'app_data';
+    const DB_RECORD_KEY = 'records';
     let records = [];
-    // 【修正④】未エクスポートの保存があるかどうかを管理するフラグ
-    let hasUnsavedExport = false;
-    let currentSelectedMonth = "";
+    let storageDb = null;
+    let lastSavedAt = null;
 
-    // 起動時にlocalStorageから読み込む（エラーハンドリング付き）
-    try {
-        records = JSON.parse(localStorage.getItem('bp_records_integrated')) || [];
-    } catch (e) {
-        records = [];
-        alert('⚠️ 保存データの読み込みに失敗しました。データが破損している可能性があります。');
+    function isRecordArray(value) {
+        return Array.isArray(value) && value.every(r =>
+            r && typeof r.fullDate === 'string' &&
+            Array.isArray(r.m1) && r.m1.length >= 3 &&
+            Array.isArray(r.m2) && r.m2.length >= 3 &&
+            Array.isArray(r.e1) && r.e1.length >= 3 &&
+            Array.isArray(r.e2) && r.e2.length >= 3
+        );
+    }
+
+    function unpackPayload(value) {
+        if (isRecordArray(value)) return { records: value, updatedAt: 0 };
+        if (value && isRecordArray(value.records)) {
+            return { records: value.records, updatedAt: Number(value.updatedAt) || 0 };
+        }
+        return null;
+    }
+
+    function readLocalPayload(key) {
+        try {
+            const raw = localStorage.getItem(key);
+            return raw ? unpackPayload(JSON.parse(raw)) : null;
+        } catch (error) {
+            console.error(`${key} の読み込みに失敗しました:`, error);
+            return null;
+        }
+    }
+
+    function openStorageDb() {
+        return new Promise((resolve, reject) => {
+            if (!('indexedDB' in window)) return resolve(null);
+            const request = indexedDB.open(DB_NAME, 1);
+            request.onupgradeneeded = () => {
+                const db = request.result;
+                if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    function readDbPayload() {
+        return new Promise((resolve, reject) => {
+            if (!storageDb) return resolve(null);
+            const request = storageDb.transaction(DB_STORE, 'readonly')
+                .objectStore(DB_STORE).get(DB_RECORD_KEY);
+            request.onsuccess = () => resolve(unpackPayload(request.result));
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    function writeDbPayload(payload) {
+        return new Promise((resolve, reject) => {
+            if (!storageDb) return resolve(false);
+            const request = storageDb.transaction(DB_STORE, 'readwrite')
+                .objectStore(DB_STORE).put(payload, DB_RECORD_KEY);
+            request.onsuccess = () => resolve(true);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    function setStorageStatus(message, type = '') {
+        const el = document.getElementById('storageStatus');
+        el.textContent = message;
+        el.className = `storage-status${type ? ` ${type}` : ''}`;
+    }
+
+    function localDateTime(timestamp) {
+        if (!timestamp) return '未保存';
+        return new Date(timestamp).toLocaleString('ja-JP', {
+            month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+    }
+
+    function updateStorageStatus(type = '') {
+        const lastExport = Number(localStorage.getItem(BACKUP_DATE_KEY)) || 0;
+        const days = lastExport ? Math.floor((Date.now() - lastExport) / 86400000) : null;
+        let message = `端末内に${records.length}件保存・最終保存 ${localDateTime(lastSavedAt)}`;
+        if (days === null) {
+            message += '／CSVバックアップは未作成です';
+            type = type || 'warning';
+        } else if (days >= 7) {
+            message += `／CSVバックアップから${days}日経過`;
+            type = type || 'warning';
+        } else {
+            message += `／CSVバックアップ ${days}日前`;
+        }
+        setStorageStatus(message, type);
+    }
+
+    async function requestPersistentStorage() {
+        try {
+            if (navigator.storage?.persist) await navigator.storage.persist();
+        } catch (error) {
+            console.warn('永続ストレージの申請に失敗しました:', error);
+        }
+    }
+
+    async function initializeStorage() {
+        const primary = readLocalPayload(STORAGE_KEY);
+        const backup = readLocalPayload(BACKUP_KEY);
+        let dbPayload = null;
+
+        try {
+            storageDb = await openStorageDb();
+            dbPayload = await readDbPayload();
+        } catch (error) {
+            console.error('IndexedDBの初期化に失敗しました:', error);
+        }
+
+        const candidates = [primary, backup, dbPayload].filter(Boolean);
+        const newest = candidates.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        if (newest) {
+            records = newest.records;
+            lastSavedAt = newest.updatedAt || Date.now();
+        }
+
+        renderHistory();
+        updateStorageStatus(!primary && backup ? 'warning' : '');
+
+        // 旧localStorage形式からの移行、または片方の保存先が空の場合のみ同期する。
+        if (newest && (!primary || !dbPayload)) {
+            await persistRecords(false);
+        }
+        requestPersistentStorage();
+    }
+
+    async function persistRecords(keepPrevious = true) {
+        const payload = {
+            version: 2,
+            updatedAt: Date.now(),
+            records: records
+        };
+
+        try {
+            if (keepPrevious) {
+                const previous = localStorage.getItem(STORAGE_KEY);
+                if (previous) {
+                    try {
+                        if (unpackPayload(JSON.parse(previous))) localStorage.setItem(BACKUP_KEY, previous);
+                    } catch (error) {
+                        console.warn('破損した主保存データは予備領域へコピーしませんでした。');
+                    }
+                }
+            }
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+            await writeDbPayload(payload);
+            lastSavedAt = payload.updatedAt;
+            updateStorageStatus();
+            requestPersistentStorage();
+            return true;
+        } catch (error) {
+            console.error('記録の保存に失敗しました:', error);
+            setStorageStatus('保存に失敗しました。CSV出力で退避してください。', 'error');
+            return false;
+        }
     }
 
     function createOptions(id, min, max, def) {
@@ -332,10 +492,10 @@
         if(opt) el.value = nextVal;
     }
 
-    function addRecord() {
+    async function addRecord() {
         const dateVal = document.getElementById('record_date').value;
-        if (!dateVal) {
-            alert('日付を入力してください');
+        if (!isValidDateString(dateVal)) {
+            alert('記録日を指定してください');
             return;
         }
         const entry = {
@@ -349,14 +509,8 @@
         records = records.filter(r => r.fullDate !== dateVal);
         records.unshift(entry);
         records.sort((a,b) => new Date(b.fullDate) - new Date(a.fullDate));
-        
-        const parts = dateVal.split('-');
-        currentSelectedMonth = `${parts[0]}-${String(parts[1]).padStart(2, '0')}`;
-        
-        // 【修正④】記録を保存したらエクスポート未実施フラグを立てる
-        hasUnsavedExport = true;
-        saveAndRender();
-        alert('保存しました');
+        const saved = await saveAndRender();
+        if (saved) alert('端末内の2か所に保存しました');
     }
 
     function loadToInputs(id) {
@@ -364,7 +518,12 @@
         if (!r) return;
         if (confirm(`${r.fullDate} のデータを入力欄に反映しますか？`)) {
             document.getElementById('record_date').value = r.fullDate;
-            const setVal = (eid, val) => { if(val !== undefined) document.getElementById(eid).value = val; };
+            const setVal = (id, val) => {
+                const el = document.getElementById(id);
+                if (val !== undefined && val !== null && el.querySelector(`option[value="${val}"]`)) {
+                    el.value = val;
+                }
+            };
             setVal('m1_sys', r.m1[0]); setVal('m1_dia', r.m1[1]); setVal('m1_pulse', r.m1[2]);
             setVal('m2_sys', r.m2[0]); setVal('m2_dia', r.m2[1]); setVal('m2_pulse', r.m2[2]);
             setVal('e1_sys', r.e1[0]); setVal('e1_dia', r.e1[1]); setVal('e1_pulse', r.e1[2]);
@@ -373,86 +532,20 @@
         }
     }
 
-    // 【修正⑤】localStorage書き込みエラーをキャッチして通知
-    function saveAndRender() {
-        try {
-            localStorage.setItem('bp_records_integrated', JSON.stringify(records));
-        } catch (e) {
-            alert('⚠️ 保存容量が上限に達しました。\n「📊 出力」からCSVに書き出し、古いデータを整理してください。');
-        }
+    async function saveAndRender() {
         renderHistory();
+        return await persistRecords();
     }
 
-    // --- 月選択プルダウンの構築 ---
-    function updateMonthSelect() {
-        const select = document.getElementById('historyMonthSelect');
-        let currentVal = currentSelectedMonth || select.value; 
-        select.innerHTML = '';
-        
-        if (records.length === 0) {
-            const opt = document.createElement('option');
-            opt.value = "";
-            opt.textContent = "データなし";
-            select.appendChild(opt);
-            return;
-        }
-
-        const months = new Set();
-        records.forEach(r => {
-            const parts = r.fullDate.split('-');
-            months.add(`${parts[0]}-${String(parts[1]).padStart(2, '0')}`);
-        });
-
-        const sortedMonths = Array.from(months).sort().reverse();
-
-        sortedMonths.forEach(m => {
-            const opt = document.createElement('option');
-            opt.value = m;
-            const parts = m.split('-');
-            opt.textContent = `${parts[0]}年${parseInt(parts[1])}月`;
-            select.appendChild(opt);
-        });
-
-        if (currentVal && sortedMonths.includes(currentVal)) {
-            select.value = currentVal;
-        } else {
-            select.value = sortedMonths[0]; 
-        }
-        currentSelectedMonth = select.value;
-    }
-
-    function onMonthChange() {
-        currentSelectedMonth = document.getElementById('historyMonthSelect').value;
-        renderHistory();
-    }
-
-    // --- 指定された月のみフィルタリングして表示 ---
     function renderHistory() {
-        updateMonthSelect();
-
         const list = document.getElementById('historyList');
-        const selectedMonth = document.getElementById('historyMonthSelect').value;
-
         if (records.length === 0) {
             list.innerHTML = '<div style="text-align:center;color:#999;padding:20px;">データがありません</div>';
             return;
         }
-
-        const filteredRecords = records.filter(r => {
-            const parts = r.fullDate.split('-');
-            const rMonth = `${parts[0]}-${String(parts[1]).padStart(2, '0')}`;
-            return rMonth === selectedMonth;
-        });
-
-        if (filteredRecords.length === 0) {
-            list.innerHTML = '<div style="text-align:center;color:#999;padding:20px;">この月のデータはありません</div>';
-            return;
-        }
-
-        // 【修正⑥】詳細表示を整合性のある4行構成に修正
-        list.innerHTML = filteredRecords.map(r => {
+        list.innerHTML = records.map(r => {
             const dParts = r.fullDate.split('-');
-            const p = (val) => (val !== undefined && val !== 0) ? val : '--';
+            const p = (val) => val || '--';
             return `
                 <div class="history-item" onclick="this.classList.toggle('open')">
                     <div class="history-summary">
@@ -462,71 +555,104 @@
                         <button class="delete-btn" onclick="event.stopPropagation(); deleteRecord(${r.id})">×</button>
                     </div>
                     <div class="history-details">
-                        <p>朝① ${r.m1[0]}/${r.m1[1]} (脈:${p(r.m1[2])}) ｜ 朝② ${r.m2[0]}/${r.m2[1]} (脈:${p(r.m2[2])})</p>
-                        <p>夜① ${r.e1[0]}/${r.e1[1]} (脈:${p(r.e1[2])}) ｜ 夜② ${r.e2[0]}/${r.e2[1]} (脈:${p(r.e2[2])})</p>
+                        <p>朝②: ${r.m2[0]}/${r.m2[1]} (脈:${p(r.m2[2])}) | 夜②: ${r.e2[0]}/${r.e2[1]} (脈:${p(r.e2[2])})</p>
+                        <p>脈拍① 朝:${p(r.m1[2])} / 夜:${p(r.e1[2])}</p>
                         <button class="reflect-btn" onclick="event.stopPropagation(); loadToInputs(${r.id})">このデータを入力欄に戻す</button>
                     </div>
                 </div>`;
         }).join('');
     }
 
-    function deleteRecord(id) {
+    async function deleteRecord(id) {
         if(confirm('この記録を削除しますか？')) {
             records = records.filter(r => r.id !== id);
-            saveAndRender();
+            await saveAndRender();
         }
     }
 
-    function exportToCSV() {
+    function exportToCSV(silent = false) {
         let csv = "日付,朝1高,朝1低,朝1脈,朝2高,朝2低,朝2脈,夜1高,夜1低,夜1脈,夜2高,夜2低,夜2脈\n";
         records.forEach(r => {
-            csv += `${r.fullDate},${r.m1[0]},${r.m1[1]},${r.m1[2]||''},${r.m2[0]},${r.m2[1]},${r.m2[2]||''},${r.e1[0]},${r.e1[1]},${r.e1[2]||''},${r.e2[0]},${r.e2[1]},${r.e2[2]||''}\n`;
+            const v = value => Number.isFinite(Number(value)) && Number(value) > 0 ? value : '';
+            csv += `${r.fullDate},${v(r.m1[0])},${v(r.m1[1])},${v(r.m1[2])},${v(r.m2[0])},${v(r.m2[1])},${v(r.m2[2])},${v(r.e1[0])},${v(r.e1[1])},${v(r.e1[2])},${v(r.e2[0])},${v(r.e2[1])},${v(r.e2[2])}\n`;
         });
         const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], {type:'text/csv;charset=utf-8'});
         const a = document.createElement('a');
         const now = new Date();
         a.download = `血圧 ${now.getMonth()+1}月 ${now.getDate()}日保存.csv`;
-        // 【修正③】URLオブジェクトのメモリリークを防ぐ
         const url = URL.createObjectURL(blob);
         a.href = url;
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
-        // 【修正④】エクスポート完了でフラグをリセット
-        hasUnsavedExport = false;
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        localStorage.setItem(BACKUP_DATE_KEY, String(Date.now()));
+        updateStorageStatus();
+        if (!silent) setStorageStatus(`CSVバックアップを作成しました（${records.length}件）`);
     }
 
-    function importFromCSV(input) {
+    async function importFromCSV(input) {
         const file = input.files[0];
         if (!file) return;
-        // 【修正②】同じファイルを再インポートできるようにリセット
-        input.value = '';
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = async function(e) {
             const lines = e.target.result.split(/\r\n|\n/);
             let count = 0;
+            let skipped = 0;
+            const previousRecords = JSON.parse(JSON.stringify(records));
             for (let i = 1; i < lines.length; i++) {
                 const cols = lines[i].split(',');
-                // 【修正①】エクスポートの13列（日付+12データ）に合わせてチェック
-                if (cols.length < 13) continue;
-                const n = (v) => { const x = parseInt(v); return isNaN(x) ? 0 : x; };
+                if (cols.length < 13) {
+                    if (lines[i].trim()) skipped++;
+                    continue;
+                }
+                const date = normalizeDate(cols[0].trim());
+                const n = (v) => {
+                    const x = Number.parseInt(String(v).trim(), 10);
+                    return Number.isFinite(x) ? x : null;
+                };
+                const values = cols.slice(1, 13).map(n);
+                const requiredIndexes = [0, 1, 3, 4, 6, 7, 9, 10];
+                const validDate = isValidDateString(date);
+                const validRequired = requiredIndexes.every(index => {
+                    const value = values[index];
+                    const isSys = [0, 3, 6, 9].includes(index);
+                    return value !== null && value >= (isSys ? 70 : 40) && value <= (isSys ? 220 : 140);
+                });
+                const validOptional = [2, 5, 8, 11].every(index =>
+                    values[index] === null || (values[index] >= 40 && values[index] <= 140)
+                );
+                if (!validDate || !validRequired || !validOptional) {
+                    skipped++;
+                    continue;
+                }
                 const entry = {
                     id: Date.now() + i,
-                    fullDate: cols[0].trim(),
-                    m1: [n(cols[1]), n(cols[2]), n(cols[3])],
-                    m2: [n(cols[4]), n(cols[5]), n(cols[6])],
-                    e1: [n(cols[7]), n(cols[8]), n(cols[9])],
-                    e2: [n(cols[10]), n(cols[11]), n(cols[12])]
+                    fullDate: date,
+                    m1: values.slice(0, 3),
+                    m2: values.slice(3, 6),
+                    e1: values.slice(6, 9),
+                    e2: values.slice(9, 12)
                 };
-                if (!entry.fullDate) continue;
                 records = records.filter(r => r.fullDate !== entry.fullDate);
                 records.push(entry);
                 count++;
             }
+            if (count === 0) {
+                records = previousRecords;
+                input.value = '';
+                alert(`取り込める記録がありませんでした${skipped ? `（${skipped}行を除外）` : ''}`);
+                return;
+            }
+
             records.sort((a,b) => new Date(b.fullDate) - new Date(a.fullDate));
-            // 取り込み後はエクスポート未実施フラグを立てる
-            hasUnsavedExport = true;
-            saveAndRender();
-            alert(`${count}件取り込みました`);
+            const saved = await saveAndRender();
+            input.value = '';
+            if (saved) alert(`${count}件取り込みました${skipped ? `（${skipped}行を除外）` : ''}`);
+        };
+        reader.onerror = () => {
+            input.value = '';
+            alert('CSVファイルを読み込めませんでした');
         };
         reader.readAsText(file);
     }
@@ -534,18 +660,29 @@
     function showPrintDialog() {
         document.getElementById('printDialog').style.display = 'flex';
         if (records.length > 0) {
-            const dates = records.map(r => new Date(r.fullDate.replace(/-/g, '/') + " 00:00:00").getTime());
-            document.getElementById('printStartDate').value = new Date(Math.min(...dates)).toISOString().split('T')[0];
-            document.getElementById('printEndDate').value = new Date(Math.max(...dates)).toISOString().split('T')[0];
+            const validDates = records.map(r => normalizeDate(r.fullDate)).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
+            validDates.sort();
+            document.getElementById('printStartDate').value = validDates[0] || '';
+            document.getElementById('printEndDate').value = validDates[validDates.length - 1] || '';
         }
     }
     function closePrintDialog() { document.getElementById('printDialog').style.display = 'none'; }
 
+    // 日付マッチング用正規化関数 (2025-12-1 と 2025-12-01 両方対応)
     function normalizeDate(dStr) {
         if (!dStr) return "";
         const parts = dStr.split('-');
         if (parts.length !== 3) return dStr;
         return `${parts[0]}-${String(parts[1]).padStart(2,'0')}-${String(parts[2]).padStart(2,'0')}`;
+    }
+
+    function isValidDateString(dStr) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dStr)) return false;
+        const [year, month, day] = dStr.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        return date.getFullYear() === year &&
+            date.getMonth() === month - 1 &&
+            date.getDate() === day;
     }
 
     function executePrint() {
@@ -555,52 +692,76 @@
 
         const start = new Date(startVal.replace(/-/g, '/') + " 00:00:00");
         const end = new Date(endVal.replace(/-/g, '/') + " 00:00:00");
+        if (start > end) return alert('終了日は開始日以降を指定してください');
         
+        // データを正規化してマップ化 (12-1 と 12-01 の混在を解決)
         const recordMap = {};
         records.forEach(r => recordMap[normalizeDate(r.fullDate)] = r);
 
         let html = '';
         let current = new Date(start);
-        current.setDate(current.getDate() - current.getDay());
+        current.setDate(current.getDate() - current.getDay()); // 日曜日に合わせる
 
         const weeks = [];
         while (current <= end) {
             const week = { start: new Date(current), days: [] };
             for (let i = 0; i < 7; i++) {
                 const dStr = normalizeDate(`${current.getFullYear()}-${current.getMonth()+1}-${current.getDate()}`);
-                week.days.push({ date: new Date(current), data: recordMap[dStr] || null });
+                const inRange = current >= start && current <= end;
+                week.days.push({ date: new Date(current), data: inRange ? (recordMap[dStr] || null) : null });
                 current.setDate(current.getDate() + 1);
             }
             weeks.push(week);
         }
 
+        // 4週間ごとにページを分ける
         for (let p = 0; p < Math.ceil(weeks.length / 4); p++) {
             html += `<div class="print-page">`;
             weeks.slice(p * 4, (p + 1) * 4).forEach(w => {
-                let mSumS = 0, mSumD = 0, mSumP = 0, mCount = 0;
-                let eSumS = 0, eSumD = 0, eSumP = 0, eCount = 0;
+                let mSumS = 0, mSumD = 0, mSumP = 0, mCount = 0, mPCount = 0;
+                let eSumS = 0, eSumD = 0, eSumP = 0, eCount = 0, ePCount = 0;
                 
+                const pairAverage = (a, b) => {
+                    const values = [a, b].map(Number).filter(v => Number.isFinite(v) && v > 0);
+                    return values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
+                };
                 w.days.forEach(d => { if (d.data) {
-                    mSumS += (d.data.m1[0] + d.data.m2[0]) / 2; mSumD += (d.data.m1[1] + d.data.m2[1]) / 2; mSumP += (d.data.m1[2] + d.data.m2[2]) / 2; mCount++;
-                    eSumS += (d.data.e1[0] + d.data.e2[0]) / 2; eSumD += (d.data.e1[1] + d.data.e2[1]) / 2; eSumP += (d.data.e1[2] + d.data.e2[2]) / 2; eCount++;
+                    const mS = pairAverage(d.data.m1[0], d.data.m2[0]);
+                    const mD = pairAverage(d.data.m1[1], d.data.m2[1]);
+                    const mP = pairAverage(d.data.m1[2], d.data.m2[2]);
+                    const eS = pairAverage(d.data.e1[0], d.data.e2[0]);
+                    const eD = pairAverage(d.data.e1[1], d.data.e2[1]);
+                    const eP = pairAverage(d.data.e1[2], d.data.e2[2]);
+                    if (mS !== null && mD !== null) {
+                        mSumS += mS; mSumD += mD; mCount++;
+                        if (mP !== null) { mSumP += mP; mPCount++; }
+                    }
+                    if (eS !== null && eD !== null) {
+                        eSumS += eS; eSumD += eD; eCount++;
+                        if (eP !== null) { eSumP += eP; ePCount++; }
+                    }
                 }});
                 
-                const avgItem = (label, s, d, p2, c, color) => {
-                    const val = c > 0 ? `<div style="color:${color};"><span class="avg-val-large">${Math.round(s/c)}/${Math.round(d/c)}</span> <span class="avg-pulse">(脈:${Math.round(p2/c)})</span></div>` : '<div class="avg-val-large">--</div>';
+                const avgItem = (label, s, d, p, c, pCount, color) => {
+                    const pulse = pCount > 0 ? ` <span class="avg-pulse">(脈:${Math.round(p/pCount)})</span>` : '';
+                    const val = c > 0 ? `<div style="color:${color};"><span class="avg-val-large">${Math.round(s/c)}/${Math.round(d/c)}</span>${pulse}</div>` : '<div class="avg-val-large">--</div>';
                     return `<div class="avg-item"><span class="avg-label">${label}</span>${val}</div>`;
                 };
 
-                // 【修正⑦】週番号の代わりに「〇/〇〜〇/〇」形式で表示（年またぎバグを回避）
-                const weekEnd = new Date(w.start);
-                weekEnd.setDate(weekEnd.getDate() + 6);
-                const weekRangeStr = `${w.start.getMonth()+1}/${w.start.getDate()}〜${weekEnd.getMonth()+1}/${weekEnd.getDate()}`;
+                // 第何週かを計算 (1月1日が含まれる週を第1週とする)
+                const sat = new Date(w.start);
+                sat.setDate(sat.getDate() + 6); // その週の土曜日を基準にして年を判定
+                const jan1 = new Date(sat.getFullYear(), 0, 1);
+                const jan1Sun = new Date(jan1);
+                jan1Sun.setDate(jan1.getDate() - jan1.getDay()); // 1月1日が含まれる週の日曜日
+                const weekNum = Math.round((w.start.getTime() - jan1Sun.getTime()) / 604800000) + 1; // 604800000ms = 7日間
 
                 html += `<div class="week-group">
                     <div class="weekly-summary">
-                        <div class="week-title">${weekRangeStr} の全体平均</div>
+                        <div class="week-title">${w.start.getMonth()+1}/${w.start.getDate()} 週 (第${weekNum}週) の全体平均</div>
                         <div class="avg-row">
-                            ${avgItem('朝平均', mSumS, mSumD, mSumP, mCount, '#b66a00')}
-                            ${avgItem('夜平均', eSumS, eSumD, eSumP, eCount, '#1a5ca3')}
+                            ${avgItem('朝平均', mSumS, mSumD, mSumP, mCount, mPCount, '#b66a00')}
+                            ${avgItem('夜平均', eSumS, eSumD, eSumP, eCount, ePCount, '#1a5ca3')}
                         </div>
                     </div>`;
                     
@@ -612,21 +773,22 @@
                     let eHtml = '<div class="val-cell val-e">--</div>';
                     
                     if (r) {
-                        const mSysAvg = Math.round((r.m1[0] + r.m2[0]) / 2);
-                        const mDiaAvg = Math.round((r.m1[1] + r.m2[1]) / 2);
-                        const mPlsAvg = Math.round((r.m1[2] + r.m2[2]) / 2);
+                        // 日々の平均値を計算
+                        const mSysAvg = pairAverage(r.m1[0], r.m2[0]);
+                        const mDiaAvg = pairAverage(r.m1[1], r.m2[1]);
+                        const mPlsAvg = pairAverage(r.m1[2], r.m2[2]);
                         
-                        const eSysAvg = Math.round((r.e1[0] + r.e2[0]) / 2);
-                        const eDiaAvg = Math.round((r.e1[1] + r.e2[1]) / 2);
-                        const ePlsAvg = Math.round((r.e1[2] + r.e2[2]) / 2);
+                        const eSysAvg = pairAverage(r.e1[0], r.e2[0]);
+                        const eDiaAvg = pairAverage(r.e1[1], r.e2[1]);
+                        const ePlsAvg = pairAverage(r.e1[2], r.e2[2]);
 
                         mHtml = `<div class="val-cell val-m">
-                                    <div class="bp-main"><span class="prefix-text">[平均]</span>${mSysAvg}/${mDiaAvg}</div>
-                                    <div class="bp-sub">${mPlsAvg}<span class="suffix-text">[拍/分]</span></div>
+                                    <div class="bp-main"><span class="prefix-text">[平均]</span>${Math.round(mSysAvg)}/${Math.round(mDiaAvg)}</div>
+                                    <div class="bp-sub">${mPlsAvg === null ? '--' : Math.round(mPlsAvg)}<span class="suffix-text">[拍/分]</span></div>
                                  </div>`;
                         eHtml = `<div class="val-cell val-e">
-                                    <div class="bp-main"><span class="prefix-text">[平均]</span>${eSysAvg}/${eDiaAvg}</div>
-                                    <div class="bp-sub">${ePlsAvg}<span class="suffix-text">[拍/分]</span></div>
+                                    <div class="bp-main"><span class="prefix-text">[平均]</span>${Math.round(eSysAvg)}/${Math.round(eDiaAvg)}</div>
+                                    <div class="bp-sub">${ePlsAvg === null ? '--' : Math.round(ePlsAvg)}<span class="suffix-text">[拍/分]</span></div>
                                  </div>`;
                     }
                     
@@ -648,15 +810,17 @@
         setTimeout(() => { window.print(); }, 500);
     }
 
-    // 【修正④】CSVエクスポートをしていない新規保存がある場合のみ終了警告を表示
-    window.addEventListener('beforeunload', function (e) {
-        if (hasUnsavedExport) {
-            e.preventDefault();
-            e.returnValue = '';
-        }
-    });
+    initializeStorage();
 
-    saveAndRender();
+    // PWA用サービスワーカーを登録する。
+    // GitHub Pagesのプロジェクト配下でも動作するよう相対パスを使用する。
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').catch(error => {
+                console.error('サービスワーカーの登録に失敗しました:', error);
+            });
+        });
+    }
 </script>
 </body>
 </html>
